@@ -5,35 +5,32 @@ const PORT = 3002;
 // 🔓 FULL ACCESS WebSocket server
 const wss = new WebSocketServer({
   port: PORT,
-  verifyClient: (info, done) => {
-    // ✅ Allow EVERYTHING (no CORS, no origin check)
-    done(true);
-  }
+  verifyClient: (info, done) => done(true)
 });
 
 console.log(`✅ WebSocket Server running on ws://0.0.0.0:${PORT}`);
 
 wss.on("connection", (ws, req) => {
   const ip = req.socket.remoteAddress;
-  const origin = req.headers.origin || "NO_ORIGIN";
+  console.log("🔌 Client connected:", ip);
 
-  console.log("🔌 Client connected");
-  console.log("   IP:", ip);
-  console.log("   Origin:", origin);
-
-  // Welcome message
-  ws.send("HELLO FROM NODE (FULL ACCESS)");
+  // Welcome message (optional)
+  ws.send("HELLO FROM NODE (BROADCAST SERVER)");
 
   ws.on("message", (data) => {
     const msg = data.toString();
-    console.log("📩 Message:", msg);
+    console.log("📩 From client:", msg);
 
-    // Echo back
-    ws.send(`ECHO: ${msg}`);
+    // 🔥 BROADCAST TO ALL CONNECTED CLIENTS
+    wss.clients.forEach((client) => {
+      if (client.readyState === client.OPEN) {
+        client.send(msg);
+      }
+    });
   });
 
   ws.on("close", () => {
-    console.log("❌ Client disconnected");
+    console.log("❌ Client disconnected:", ip);
   });
 
   ws.on("error", (err) => {
