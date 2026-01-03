@@ -1,39 +1,42 @@
 import { WebSocketServer } from "ws";
+import { parse } from "url";
 
 const PORT = 3002;
 
-// 🔓 FULL ACCESS WebSocket server
-const wss = new WebSocketServer({
-  port: PORT,
-  verifyClient: (info, done) => done(true)
-});
+const wss = new WebSocketServer({ port: PORT });
 
-console.log(`✅ WebSocket Server running on ws://0.0.0.0:${PORT}`);
+console.log(`✅ WS running on ws://0.0.0.0:${PORT}`);
 
 wss.on("connection", (ws, req) => {
-  const ip = req.socket.remoteAddress;
-  console.log("🔌 Client connected:", ip);
+  // 🔥 Parse query params
+  const { query } = parse(req.url, true);
+  const username = query.username || "unknown";
 
-  // Welcome message (optional)
-  ws.send("HELLO FROM NODE (BROADCAST SERVER)");
+  ws.username = username;
+
+  console.log("🔌 Connected:", username);
+
+  ws.send(JSON.stringify({
+    type: "welcome",
+    user: "server",
+    message: `Hello ${username}`
+  }));
 
   ws.on("message", (data) => {
-    const msg = data.toString();
-    console.log("📩 From client:", msg);
+    console.log(`📩 ${username}:`, data.toString());
 
-    // 🔥 BROADCAST TO ALL CONNECTED CLIENTS
+    // broadcast
     wss.clients.forEach((client) => {
       if (client.readyState === client.OPEN) {
-        client.send(msg);
+        client.send(JSON.stringify({
+          from: username,
+          message: data.toString()
+        }));
       }
     });
   });
 
   ws.on("close", () => {
-    console.log("❌ Client disconnected:", ip);
-  });
-
-  ws.on("error", (err) => {
-    console.error("⚠️ WebSocket error:", err.message);
+    console.log("❌ Disconnected:", username);
   });
 });
