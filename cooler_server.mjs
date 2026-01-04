@@ -16,24 +16,72 @@ wss.on("connection", (ws, req) => {
 
   console.log("🔌 Connected:", username);
 
+  // ✅ Welcome
   ws.send(JSON.stringify({
     type: "welcome",
-    user: "server",
+    status: "ok",
     message: `Hello ${username}`
   }));
 
   ws.on("message", (data) => {
-    console.log(`📩 ${username}:`, data.toString());
+    let payload;
 
-    // broadcast
+    try {
+      payload = JSON.parse(data.toString());
+    } catch (err) {
+      ws.send(JSON.stringify({
+        type: "error",
+        reason: "INVALID_JSON",
+        message: "Invalid JSON format"
+      }));
+      return;
+    }
+
+    console.log(`📩 From ${username}:`, payload);
+
+    const targetUser = payload.target;
+
+    // ❌ TARGET MISSING
+    if (!targetUser) {
+      ws.send(JSON.stringify({
+        type: "error",
+        reason: "TARGET_MISSING",
+        message: "target field is required"
+      }));
+      return;
+    }
+
+    let sent = false;
+
+    // 🎯 SEND ONLY TO TARGET USER
     wss.clients.forEach((client) => {
-      if (client.readyState === client.OPEN) {
-        client.send(JSON.stringify({
-          from: username,
-          message: data.toString()
-        }));
+      if (
+        client.readyState === client.OPEN &&
+        client.username === targetUser
+      ) {
+        client.send(JSON.stringify(payload));
+        sent = true;
       }
     });
+
+    // ❌ TARGET NOT ONLINE
+    if (!sent) {
+      ws.send(JSON.stringify({
+        type: "error",
+        reason: "TARGET_OFFLINE",
+        target: targetUser,
+        message: `User ${targetUser} is not connected`
+      }));
+      console.log(`⚠️ Target user not connected: ${targetUser}`);
+      return;
+    }
+
+    // ✅ SUCCESS ACK (optional but recommended)
+    ws.send(JSON.stringify({
+      type: "ack",
+      status: "sent",
+      target: targetUser
+    }));
   });
 
   ws.on("close", () => {
