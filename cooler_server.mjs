@@ -2,89 +2,141 @@ import { WebSocketServer } from "ws";
 import { parse } from "url";
 
 const PORT = 3002;
+const MAX_PAYLOAD = 5 * 1024; // 5KB (ESP safe)
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({
+  port: PORT,
+  clientTracking: true
+});
 
 console.log(`✅ WS running on ws://0.0.0.0:${PORT}`);
 
+// --------------------------------------------------
+// 🔒 SAFE SEND (never crashes)
+// --------------------------------------------------
+function safeSend(ws, obj) {
+  try {
+    if (ws && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
+  } catch (e) {
+    console.error("❌ safeSend error:", e.message);
+  }
+}
+
+// --------------------------------------------------
+// 🔌 CONNECTION
+// --------------------------------------------------
 wss.on("connection", (ws, req) => {
-  // 🔥 Parse query params
-  const { query } = parse(req.url, true);
-  const username = query.username || "unknown";
+  try {
+    const { query } = parse(req.url || "", true);
+    const username =
+      typeof query.username === "string" && query.username.trim()
+        ? query.username.trim()
+        : `guest_${Date.now()}`;
 
-  ws.username = username;
+    ws.username = username;
+    ws.isAlive = true;
 
-  console.log("🔌 Connected:", username);
+    console.log("🔌 Connected:", username);
 
-  // ✅ Welcome
-  ws.send(JSON.stringify({
-    type: "welcome",
-    status: "ok",
-    message: `Hello ${username}`
-  }));
+    safeSend(ws, {
+      type: "welcome",
+      username
+    });
 
-  ws.on("message", (data) => {
-    let payload;
+    // --------------------------------------------------
+    // 📩 MESSAGE (ANYTHING FROM ESP)
+    // --------------------------------------------------
+    ws.on("message", (data) => {
+      try {
+        // ❌ binary / empty / undefined
+        if (!data || data.length === 0) return;
 
-    try {
-      payload = JSON.parse(data.toString());
-    } catch (err) {
-      ws.send(JSON.stringify({
-        type: "error",
-        reason: "INVALID_JSON",
-        message: "Invalid JSON format"
-      }));
-      return;
-    }
+        // ❌ too large
+        if (data.length > MAX_PAYLOAD) {
+          safeSend(ws, {
+            type: "error",
+            reason: "PAYLOAD_TOO_LARGE"
+          });
+          return;
+        }
 
-    console.log(`📩 From ${username}:`, payload);
+        let payload;
 
-    const targetUser = payload.target;
+        // ❌ not JSON → ignore silently
+        try {
+          payload = JSON.parse(data.toString());
+        } catch {
+          console.warn("⚠️ Invalid JSON from", ws.username);
+          return;
+        }
 
-    // ❌ TARGET MISSING
-    if (!targetUser) {
-      ws.send(JSON.stringify({
-        type: "error",
-        reason: "TARGET_MISSING",
-        message: "target field is required"
-      }));
-      return;
-    }
+        // ❌ not object
+        if (typeof payload !== "object" || payload === null) return;
 
-    let sent = false;
+        const target = payload.target;
 
-    // 🎯 SEND ONLY TO TARGET USER
-    wss.clients.forEach((client) => {
-      if (
-        client.readyState === client.OPEN &&
-        client.username === targetUser
-      ) {
-        client.send(JSON.stringify(payload));
-        sent = true;
+        // ❌ no target → ignore
+        if (typeof target !== "string") return;
+
+        let delivered = false;
+
+        for (const client of wss.clients) {
+          try {
+            if (
+              client.readyState === client.OPEN &&
+              client.username === target
+            ) {
+              safeSend(client, payload);
+              delivered = true;
+              break;
+            }
+          } catch (e) {
+            console.error("⚠️ Client loop error:", e.message);
+          }
+        }
+
+        if (delivered) {
+          safeSend(ws, {
+            type: "ack",
+            target
+          });
+        }
+
+      } catch (err) {
+        console.error("🔥 message handler crash prevented:", err.message);
       }
     });
 
-    // ❌ TARGET NOT ONLINE
-    if (!sent) {
-      ws.send(JSON.stringify({
-        type: "error",
-        reason: "TARGET_OFFLINE",
-        target: targetUser,
-        message: `User ${targetUser} is not connected`
-      }));
-      console.log(`⚠️ Target user not connected: ${targetUser}`);
-      return;
-    }
+    // --------------------------------------------------
+    // ❌ SOCKET ERROR
+    // --------------------------------------------------
+    ws.on("error", (err) => {
+      console.error("⚠️ Socket error:", username, err.message);
+      try { ws.close(); } catch {}
+    });
 
-    // ✅ SUCCESS ACK (optional but recommended)
-    ws.send(JSON.stringify({
-      type: "ack",
-      status: "sent",
-      target: targetUser
-    }));
-  });
+    // --------------------------------------------------
+    // ❌ DISCONNECT
+    // --------------------------------------------------
+    ws.on("close", () => {
+      console.log("❌ Disconnected:", username);
+    });
 
-  ws.on("close", () => {
-    console.log("❌ Disconnected:", username);
-  });
+  } catch (err) {
+    console.error("🔥 Connection crash prevented:", err.message);
+    try { ws.close(); } catch {}
+  }
+});
+
+// --------------------------------------------------
+// 🫀 GLOBAL SAFETY NET (VERY IMPORTANT)
+// --------------------------------------------------
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION (SERVER STILL RUNNING):", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 UNHANDLED PROMISE (SERVER STILL RUNNING):", reason);
 });
