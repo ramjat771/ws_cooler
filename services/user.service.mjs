@@ -1,31 +1,41 @@
 import * as userRepo from "../repositories/user.repo.mjs";
 
-export const createUser = async (data) => {
+// --------------------------------------------------
+export const createOrGetUser = async (data) => {
+  if (!data || !data.email) {
+    throw new CustomError("Invalid user data: email missing", 400);
+  }
+
   const existingUser = await userRepo.getUserByEmailRepo(data.email);
 
   if (existingUser) {
-    // Email already exists → Check password
-    if (existingUser.password === data.password) {
-      return {
-        login: true,
-        message: "Login successful",
-        user: existingUser,
-      };
-    }
-
     return {
-      login: false,
-      message: "Invalid password",
+      exists: true,
+      user: existingUser,
     };
   }
 
-  // Email not found → create new
   const newUser = await userRepo.createUserRepo(data);
 
   return {
-    login: false,
     created: true,
-    message: "User created successfully",
     user: newUser,
   };
+};
+
+// --------------------------------------------------
+export const addDevice = async (id, device) => {
+  return await userRepo.addDeviceRepo(id, device);
+};
+
+export const removeDevice = async (id, device) => {
+  return await userRepo.removeDeviceRepo(id, device);
+};
+
+export const getAllUsers = async () => {
+  return await userRepo.getAllUsersRepo();
+};
+
+export const getUserById = async (id) => {
+  return await userRepo.getUserByIdRepo(id);
 };

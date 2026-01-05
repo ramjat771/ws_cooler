@@ -2,23 +2,54 @@
 import { WebSocketServer } from "ws";
 import { parse } from "url";
 
-const MAX_PAYLOAD = 5 * 1024; // 5KB (ESP safe)
+const MAX_PAYLOAD = 5 * 1024;       // 5KB (ESP safe)
+const HEARTBEAT_INTERVAL = 30000;   // 30 sec
 
 export function attachWSServer(server) {
   const wss = new WebSocketServer({ server });
 
   console.log("✅ RAW WebSocket attached");
 
+  // -------------------------------
+  // SAFE SEND
+  // -------------------------------
   function safeSend(ws, obj) {
     try {
       if (ws && ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(obj));
+        return true;
       }
     } catch (e) {
-      console.error("❌ safeSend error:", e.message);
+      console.error("❌ send failed:", ws.username, e.message);
     }
+    return false;
   }
 
+  // -------------------------------
+  // HEARTBEAT (ANTI-ZOMBIE)
+  // -------------------------------
+  function heartbeat() {
+    this.isAlive = true;
+  }
+
+  const hbTimer = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.isAlive === false) {
+        console.log("💀 Dead WS killed:", ws.username);
+        try { ws.terminate(); } catch {}
+        continue;
+      }
+
+      ws.isAlive = false;
+      try { ws.ping(); } catch {}
+    }
+  }, HEARTBEAT_INTERVAL);
+
+  wss.on("close", () => clearInterval(hbTimer));
+
+  // -------------------------------
+  // CONNECTION
+  // -------------------------------
   wss.on("connection", (ws, req) => {
     try {
       const { query } = parse(req.url || "", true);
@@ -29,14 +60,21 @@ export function attachWSServer(server) {
           : `guest_${Date.now()}`;
 
       ws.username = username;
+      ws.isAlive = true;
+
+      ws.on("pong", heartbeat);
 
       console.log("🔌 WS Connected:", username);
 
       safeSend(ws, {
         type: "welcome",
         username,
+        ts: Date.now(),
       });
 
+      // -------------------------------
+      // MESSAGE
+      // -------------------------------
       ws.on("message", (data) => {
         try {
           if (!data || data.length === 0) return;
@@ -59,6 +97,12 @@ export function attachWSServer(server) {
 
           if (!payload || typeof payload !== "object") return;
 
+          // ignore keep-alive / ping json
+          if (payload.type === "ping") {
+            safeSend(ws, { type: "pong", ts: Date.now() });
+            return;
+          }
+
           const target = payload.target;
           if (typeof target !== "string") return;
 
@@ -69,31 +113,37 @@ export function attachWSServer(server) {
               client.readyState === client.OPEN &&
               client.username === target
             ) {
-              safeSend(client, payload);
+              const ok = safeSend(client, payload);
+              if (!ok) {
+                try { client.terminate(); } catch {}
+              }
               delivered = true;
               break;
             }
           }
 
-          if (delivered) {
-            safeSend(ws, {
-              type: "ack",
-              target,
-            });
-          }
+          // ACK to sender
+          safeSend(ws, {
+            type: delivered ? "ack" : "nack",
+            target,
+            ts: Date.now(),
+          });
 
         } catch (err) {
           console.error("🔥 message crash prevented:", err.message);
         }
       });
 
+      // -------------------------------
+      // CLOSE / ERROR
+      // -------------------------------
       ws.on("close", () => {
         console.log("❌ WS Disconnected:", username);
       });
 
       ws.on("error", (err) => {
         console.error("⚠️ WS Error:", username, err.message);
-        try { ws.close(); } catch {}
+        try { ws.terminate(); } catch {}
       });
 
     } catch (err) {

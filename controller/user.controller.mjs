@@ -1,74 +1,68 @@
 import * as userService from "../services/user.service.mjs";
 import { errorResponse, successResponse } from "../utils/api_response.mjs";
+import { CustomError } from "../utils/custom_error.mjs";
 
+// --------------------------------------------------
 export const createUserController = async (req, res, next) => {
   try {
-    const result = await userService.createUser(req.body);
-
-    if (result.login === true) {
-      return successResponse(res, result.user, "Login successful");
+    // 🔥 SAFE ACCESS
+    if (!req.body) {
+      throw new CustomError("Request body is missing", 400);
     }
 
-    if (result.login === false && !result.created) {
-      return errorResponse(res, "Invalid password",401 ,null);
+    const { email, username, mobile, password } = req.body;
+
+    if (!email || !username || !mobile || !password) {
+      throw new CustomError(
+        "email, username, mobile and password are required",
+        400
+      );
     }
 
-    if (result.created === true) {
-      return successResponse(res, result.user, "User created successfully");
+    const result = await userService.createOrGetUser(req.body);
+
+    if (result.exists) {
+      return successResponse(res, result.user, "User already exists");
     }
 
+    return successResponse(res, result.user, "User created successfully");
+
   } catch (err) {
     next(err);
   }
 };
 
-export const getAllUsersController = async (req, res, next) => {
+// --------------------------------------------------
+export const addDeviceController = async (req, res, next) => {
   try {
-    const users = await userService.getAllUsers();
-    return successResponse(res, users, "Users fetched successfully");
-  } catch (err) {
-    next(err);
-  }
-};
-export const getUserByEmailController = async (req, res, next) => {
-  try {
-    const user = await userService.getUserByEmail(req.params.email);
-    if (!user) return successResponse(res, null, "User not found", 404);
+    const { device } = req.body;
 
-    return successResponse(res, user, "User fetched successfully");
-  } catch (err) {
-    next(err);
-  }
-};
+    if (!device) {
+      return errorResponse(res, "Device required", 400);
+    }
 
-export const getUserByIdController = async (req, res, next) => {
-  try {
-    const user = await userService.getUserById(Number(req.params.id));
-    if (!user) return successResponse(res, null, "User not found", 404);
-    return successResponse(res, user, "User fetched successfully");
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const updateUserController = async (req, res, next) => {
-  try {
-    const updatedUser = await userService.updateUser(
+    const user = await userService.addDevice(
       Number(req.params.id),
-      req.body
+      device
     );
-    if (!updatedUser) return successResponse(res, null, "User not found", 404);
-    return successResponse(res, updatedUser, "User updated successfully");
+
+    return successResponse(res, user, "Device added successfully");
   } catch (err) {
     next(err);
   }
 };
 
-export const deleteUserController = async (req, res, next) => {
+// --------------------------------------------------
+export const removeDeviceController = async (req, res, next) => {
   try {
-    const deletedUser = await userService.deleteUser(Number(req.params.id));
-    if (!deletedUser) return successResponse(res, null, "User not found", 404);
-    return successResponse(res, null, "User deleted successfully");
+    const { device } = req.body;
+
+    const user = await userService.removeDevice(
+      Number(req.params.id),
+      device
+    );
+
+    return successResponse(res, user, "Device removed successfully");
   } catch (err) {
     next(err);
   }

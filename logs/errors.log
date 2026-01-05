@@ -1,0 +1,7 @@
+[4/1/2026, 3:15:20 pm] Cannot read properties of undefined (reading 'email') at Module.createOrGetUser (file:///Users/sunitaqsunita/development/cooler_project/ws_cooler/services/user.service.mjs:5:63)
+[4/1/2026, 3:20:26 pm] Cannot destructure property 'email' of 'req.body' as it is undefined. at createUserController (file:///Users/sunitaqsunita/development/cooler_project/ws_cooler/controller/user.controller.mjs:7:13)
+[4/1/2026, 3:22:06 pm] CustomError is not defined at createUserController (file:///Users/sunitaqsunita/development/cooler_project/ws_cooler/controller/user.controller.mjs:9:7)
+[4/1/2026, 3:23:53 pm] Request body is missing at createUserController (file:///Users/sunitaqsunita/development/cooler_project/ws_cooler/controller/user.controller.mjs:10:13)
+[5/1/2026, 3:29:15 pm] E11000 duplicate key error collection: home_driver.users index: email_1 dup key: { email: "morbol898@gmail.com" } at InsertOneOperation.execute (/Users/sunitaqsunita/development/cooler_project/ws_cooler/node_modules/mongoose/node_modules/mongodb/lib/operations/insert.js:51:19)
+[5/1/2026, 3:31:36 pm] Cannot destructure property 'device' of 'req.body' as it is undefined. at addDeviceController (file:///Users/sunitaqsunita/development/cooler_project/ws_cooler/controller/user.controller.mjs:38:13)
+[5/1/2026, 3:32:21 pm] Cast to Number failed for value "NaN" (type number) at path "userId" for model "User" at SchemaNumber.cast (/Users/sunitaqsunita/development/cooler_project/ws_cooler/node_modules/mongoose/lib/schema/number.js:381:11)
