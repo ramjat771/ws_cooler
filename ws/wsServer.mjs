@@ -20,7 +20,22 @@ export function attachWSServer(server) {
         return true;
       }
     } catch (e) {
-      console.error("❌ send failed:", ws.username, e.message);
+      console.error("❌ send failed:", ws?.username, e.message);
+    }
+    return false;
+  }
+
+  // -------------------------------
+  // CHECK TARGET ONLINE
+  // -------------------------------
+  function isTargetOnline(target) {
+    for (const client of wss.clients) {
+      if (
+        client.readyState === client.OPEN &&
+        client.username === target
+      ) {
+        return true;
+      }
     }
     return false;
   }
@@ -58,6 +73,13 @@ export function attachWSServer(server) {
         typeof query.username === "string" && query.username.trim()
           ? query.username.trim()
           : `guest_${Date.now()}`;
+
+      // kill old connection with same username
+      for (const client of wss.clients) {
+        if (client.username === username && client !== ws) {
+          try { client.terminate(); } catch {}
+        }
+      }
 
       ws.username = username;
       ws.isAlive = true;
@@ -97,7 +119,7 @@ export function attachWSServer(server) {
 
           if (!payload || typeof payload !== "object") return;
 
-          // ignore keep-alive / ping json
+          // keep-alive json ping
           if (payload.type === "ping") {
             safeSend(ws, { type: "pong", ts: Date.now() });
             return;
@@ -106,8 +128,22 @@ export function attachWSServer(server) {
           const target = payload.target;
           if (typeof target !== "string") return;
 
-          let delivered = false;
+          // -------------------------------
+          // TARGET OFFLINE
+          // -------------------------------
+          if (!isTargetOnline(target)) {
+            safeSend(ws, {
+              type: "nack",
+              reason: "TARGET_OFFLINE",
+              target,
+              ts: Date.now(),
+            });
+            return;
+          }
 
+          // -------------------------------
+          // DELIVER MESSAGE
+          // -------------------------------
           for (const client of wss.clients) {
             if (
               client.readyState === client.OPEN &&
@@ -117,14 +153,13 @@ export function attachWSServer(server) {
               if (!ok) {
                 try { client.terminate(); } catch {}
               }
-              delivered = true;
               break;
             }
           }
 
-          // ACK to sender
+          // ACK sender
           safeSend(ws, {
-            type: delivered ? "ack" : "nack",
+            type: "ack",
             target,
             ts: Date.now(),
           });
