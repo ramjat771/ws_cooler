@@ -98,7 +98,7 @@ export function attachWSServer(server) {
       // MESSAGE
       // -------------------------------
       ws.on("message", (data) => {
-        console.log("meessgae fond ", data)
+        
         try {
           if (!data || data.length === 0) return;
 
