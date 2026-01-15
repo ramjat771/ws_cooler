@@ -45,7 +45,6 @@ export const addDeviceController = async (req, res, next) => {
       Number(req.params.id),
       device
     );
-
     return successResponse(res, user, "Device added successfully");
   } catch (err) {
     next(err);
