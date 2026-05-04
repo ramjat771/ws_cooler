@@ -6,7 +6,10 @@ const MAX_PAYLOAD = 5 * 1024;       // 5KB (ESP safe)
 const HEARTBEAT_INTERVAL = 30000;   // 30 sec
 
 export function attachWSServer(server) {
-  const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ 
+  server,
+  path: "/socket",   // ✅ yaha endpoint define
+});
 
   console.log("✅ RAW WebSocket attached");
 
