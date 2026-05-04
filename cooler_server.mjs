@@ -14,6 +14,7 @@ async function startServer() {
     console.log(`🔌 RAW WS: ws://localhost:${PORT}/?username=device1`);
   });
 }
+
 // 🫀 Global safety
 process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
